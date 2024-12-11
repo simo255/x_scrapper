@@ -1,19 +1,21 @@
 import requests
 import json
 import time
-import scripts.creds as creds
 import argparse
-
 import random
+import time
+
+import creds
+import X_CONSTANTS as C
+
 
 # Base URL
-BASE_URL = "https://x.com/i/api/graphql/fnkladLRj_7bB0PwaOtymA/SearchTimeline"
 AUTH_BEARER = creds.authBearer
 X_CSRF = creds.csrfToken
 X_COOKIES = creds.cookies
 
-TEXT = ""
-MAX_TWEETS = 20
+TEXT = "mbappe"
+MAX_TWEETS = 5
 MIN_FAVS = 6
 MIN_REPLIES = 0
 SINCE_DATE = "2024-11-25"
@@ -27,12 +29,14 @@ def constructQuery():
         "since": SINCE_DATE or None,
         "until": UNTIL_DATE or None,
     }
+
     # Build the query
     query = " ".join(
         [TEXT]
         + [f"{key}:{value}" for key, value in query_params.items() if value is not None]
     )
     return query
+
 
 # Existing variables
 variables = {
@@ -43,39 +47,9 @@ variables = {
     "cursor": "",
 }
 
-# Existing features
-features = {
-    "profile_label_improvements_pcf_label_in_post_enabled": False,
-    "rweb_tipjar_consumption_enabled": True,
-    "responsive_web_graphql_exclude_directive_enabled": True,
-    "verified_phone_label_enabled": False,
-    "creator_subscriptions_tweet_preview_api_enabled": True,
-    "responsive_web_graphql_timeline_navigation_enabled": True,
-    "responsive_web_graphql_skip_user_profile_image_extensions_enabled": False,
-    "premium_content_api_read_enabled": False,
-    "communities_web_enable_tweet_community_results_fetch": True,
-    "c9s_tweet_anatomy_moderator_badge_enabled": True,
-    "responsive_web_grok_analyze_button_fetch_trends_enabled": True,
-    "articles_preview_enabled": True,
-    "responsive_web_edit_tweet_api_enabled": True,
-    "graphql_is_translatable_rweb_tweet_is_translatable_enabled": True,
-    "view_counts_everywhere_api_enabled": True,
-    "longform_notetweets_consumption_enabled": True,
-    "responsive_web_twitter_article_tweet_consumption_enabled": True,
-    "tweet_awards_web_tipping_enabled": False,
-    "creator_subscriptions_quote_tweet_preview_enabled": False,
-    "freedom_of_speech_not_reach_fetch_enabled": True,
-    "standardized_nudges_misinfo": True,
-    "tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled": True,
-    "rweb_video_timestamps_enabled": True,
-    "longform_notetweets_rich_text_read_enabled": True,
-    "longform_notetweets_inline_media_enabled": True,
-    "responsive_web_enhance_cards_enabled": False,
-}
-
 encoded_variables = json.dumps(variables)
-encoded_features = json.dumps(features)
-url = f"{BASE_URL}?variables={requests.utils.quote(encoded_variables)}&features={requests.utils.quote(encoded_features)}"
+encoded_features = json.dumps(C.features)
+url = f"{C.BASE_URL}?variables={requests.utils.quote(encoded_variables)}&features={requests.utils.quote(encoded_features)}"
 
 headers = {
     "Authorization": "Bearer " + AUTH_BEARER,
@@ -86,12 +60,25 @@ headers = {
 }
 
 
-
 def fetch_data(url, headers):
     all_results = []
     while len(all_results) < MAX_TWEETS:
 
         response = requests.get(url, headers=headers)
+
+        # We have 50 requests per 15min
+        rateLimitReset = int(response.headers.get("x-rate-limit-reset", ""))
+        xLimit = int(response.headers.get("x-rate-limit-limit", ""))
+        xRateRemaining = int(response.headers.get("x-rate-limit-remaining", ""))
+
+        if response.status_code != 200:
+            wait_time = max(0, rateLimitReset - int(time.time()))
+            minutes, seconds = divmod(wait_time, 60)
+            print(
+                f"Rate limit exceeded. Please try again in {minutes} min and {seconds} sec."
+            )
+            break
+
         data = response.json()
 
         entries = (
@@ -146,6 +133,12 @@ def fetch_data(url, headers):
         if last_entry:
             cursor = last_entry[-1].get("content", {}).get("value", "")
         else:
+
+            wait_time = max(0, rateLimitReset - int(time.time()))
+            minutes, seconds = divmod(wait_time, 60)
+            print(
+                f"remaining rate: {xRateRemaining}. Will reset in {minutes} min and {seconds} sec."
+            )
             break
 
         if cursor == "":
@@ -159,7 +152,16 @@ def fetch_data(url, headers):
             )
             cursor = last_entry.get("content", {}).get("value", "")
 
-        delay = random.uniform(1, 3)
+        if time.time() < rateLimitReset:
+            if xRateRemaining >= xLimit:
+                wait_time = max(0, rateLimitReset - int(time.time()))
+                minutes, seconds = divmod(wait_time, 60)
+                print(
+                    f"Rate limit exceeded. Please try again in {minutes} min and {seconds} sec."
+                )
+                break
+
+        delay = random.uniform(0, 2)
         time.sleep(delay)
 
         if cursor:
@@ -167,21 +169,25 @@ def fetch_data(url, headers):
             variables["cursor"] = cursor
 
             encoded_variables = json.dumps(variables)
-            url = f"{BASE_URL}?variables={requests.utils.quote(encoded_variables)}&features={requests.utils.quote(encoded_features)}"
+            url = f"{C.BASE_URL}?variables={requests.utils.quote(encoded_variables)}&features={requests.utils.quote(encoded_features)}"
         else:
-
             break  # No more pages, exit the loop
+
+    wait_time = max(0, rateLimitReset - int(time.time()))
+    minutes, seconds = divmod(wait_time, 60)
+    print(
+        f"remaining rate: {xRateRemaining}. Will reset in {minutes} min and {seconds} sec."
+    )
+    print(f"scraped {len(all_results)} tweets.")
 
     return all_results
 
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Scrap tweets")
-    parser.add_argument("-f", type=str, default="tweets.json", help="filename")
+    parser.add_argument("-f", type=str, default="tweets", help="filename")
     args = parser.parse_args()
     result_data = fetch_data(url, headers)
-    
+
     with open(f"../data/{args.f}.json", "w") as json_file:
         json.dump(result_data, json_file, indent=4)
-
