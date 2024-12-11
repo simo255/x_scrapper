@@ -1,0 +1,3 @@
+authBearer = "YOUR AUTH BEARER HERE"
+csrfToken = "YOUR CSRF TOKEN HERE "
+cookies = "YOUR COOKIES HERE"
