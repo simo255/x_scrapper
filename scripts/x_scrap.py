@@ -4,6 +4,7 @@ import time
 import argparse
 import random
 import time
+from pathlib import Path
 
 import creds
 import X_CONSTANTS as C
@@ -14,7 +15,7 @@ AUTH_BEARER = creds.authBearer
 X_CSRF = creds.csrfToken
 X_COOKIES = creds.cookies
 
-TEXT = ""
+TEXT = "hey"
 MAX_TWEETS = 5
 MIN_FAVS = 6
 MIN_REPLIES = 0
@@ -187,5 +188,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
     result_data = fetch_data(url, headers)
 
+    # Define the file path
+    file_path = Path("../data") / f"{args.f}.json"
+
+    # Create the folder (and any missing parent folders) without verification
+    file_path.parent.mkdir(parents=True, exist_ok=True)
     with open(f"../data/{args.f}.json", "w") as json_file:
         json.dump(result_data, json_file, indent=4)
