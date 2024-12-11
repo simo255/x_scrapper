@@ -14,28 +14,32 @@ AUTH_BEARER = creds.authBearer
 X_CSRF = creds.csrfToken
 X_COOKIES = creds.cookies
 
-TEXT = "mbappe"
+TEXT = ""
 MAX_TWEETS = 5
 MIN_FAVS = 6
 MIN_REPLIES = 0
 SINCE_DATE = "2024-11-25"
-UNTIL_DATE = ""
+UNTIL_DATE = "" 
+FROM_USER = ""
 
 
 def constructQuery():
-    query_params = {
-        "min_faves": MIN_FAVS if MIN_FAVS > 0 else None,
-        "min_replies": MIN_REPLIES if MIN_REPLIES > 0 else None,
-        "since": SINCE_DATE or None,
-        "until": UNTIL_DATE or None,
-    }
+    query_parts = []
 
-    # Build the query
-    query = " ".join(
-        [TEXT]
-        + [f"{key}:{value}" for key, value in query_params.items() if value is not None]
-    )
-    return query
+    if TEXT:
+        query_parts.append(TEXT)
+    if MIN_FAVS > 0:
+        query_parts.append(f"min_faves:{MIN_FAVS}")
+    if MIN_REPLIES > 0:
+        query_parts.append(f"min_replies:{MIN_REPLIES}")
+    if SINCE_DATE:
+        query_parts.append(f"since:{SINCE_DATE}")
+    if UNTIL_DATE:
+        query_parts.append(f"until:{UNTIL_DATE}")
+    if FROM_USER:
+        query_parts.append(f"(from:{FROM_USER})")
+
+    return " ".join(query_parts)
 
 
 # Existing variables
@@ -63,7 +67,6 @@ headers = {
 def fetch_data(url, headers):
     all_results = []
     while len(all_results) < MAX_TWEETS:
-
         response = requests.get(url, headers=headers)
 
         # We have 50 requests per 15min
@@ -74,6 +77,7 @@ def fetch_data(url, headers):
         if response.status_code != 200:
             wait_time = max(0, rateLimitReset - int(time.time()))
             minutes, seconds = divmod(wait_time, 60)
+            print('status code : ' + response.status_code)
             print(
                 f"Rate limit exceeded. Please try again in {minutes} min and {seconds} sec."
             )
@@ -133,12 +137,6 @@ def fetch_data(url, headers):
         if last_entry:
             cursor = last_entry[-1].get("content", {}).get("value", "")
         else:
-
-            wait_time = max(0, rateLimitReset - int(time.time()))
-            minutes, seconds = divmod(wait_time, 60)
-            print(
-                f"remaining rate: {xRateRemaining}. Will reset in {minutes} min and {seconds} sec."
-            )
             break
 
         if cursor == "":
@@ -178,7 +176,7 @@ def fetch_data(url, headers):
     print(
         f"remaining rate: {xRateRemaining}. Will reset in {minutes} min and {seconds} sec."
     )
-    print(f"scraped {len(all_results)} tweets.")
+    print(f"Scraped {len(all_results)} tweets.")
 
     return all_results
 
